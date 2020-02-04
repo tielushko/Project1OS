@@ -78,7 +78,7 @@ int main (int argc, char *argv[]) {
      
     //pass the end in to parent process for time calculation
     write(timePipe[1], &end, sizeof(struct timeval));
-     
+    exit(0);
 	} else {
 		  //the parent goes down this path 
       double avgTime, t1Nanosec, t2Nanosec;
