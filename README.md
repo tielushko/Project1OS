@@ -1,4 +1,4 @@
-# Project1OS
+# Operating Systems (Spr2020) Project 1
 This project is composed of two files:
   1. system_call.c
   2. context_switch.c
