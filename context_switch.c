@@ -4,10 +4,7 @@
 #include <sched.h>
 #include <unistd.h>
 #include <sys/time.h>
-
-
-void readPipe(int file);
-void writePipe(int file);
+#include <time.h>
 
 int main (int argc, char *argv[]) {
 	
@@ -25,99 +22,100 @@ int main (int argc, char *argv[]) {
 	//set the CPU to work on one core
 	const int setAffinity = sched_setaffinity(pid, sizeof(cpu_set_t), &cpuSet); 
 	
-	int pipe1[2];
-	pid_t returnPid;
+  //the number of iterations used in the code
 	long int numberIterations = 1000000;
-	struct timeval start, end;
-	double avgTime;
-	float t1Nanosec, t2Nanosec;
-	pipe(pipe1); 
-	//pipe(pipe2);	
+	
+  //timeval structure to record time
+  struct timeval start, end;
+  
+  //communication byte between 
+  int byte = 1;
+  
+  //three pipes. 1 & 2 for communicating byte between processes, 3 for keeping track of the end timeval between processes
+  int pipe1[2];
+  int pipe2[2];
+  int timePipe[2];
+  
+  //pid integer for forking
+	pid_t returnPid;
+ 
+  //checks to make sure the pipes are open
+  if(pipe(pipe1) == -1) {
+    printf("Pipe1 failed");
+    exit(1);  
+  }
+	if(pipe(pipe2) == -1) {
+    printf("Pipe2 failed");
+    exit(1);  
+  }	
+  if(pipe(timePipe) == -1) {
+    printf("timePipe failed");
+    exit(1);  
+  }	  
 
+  //forking
 	returnPid = fork(); 
-	gettimeofday(&start, 0); 
-for (int j = 0; j < numberIterations; j++) {
+ 
 	if (returnPid < 0) {
 		//fork failed; exit
 		fprintf(stderr, "Forking failed\n");
 		exit(1); 		
 	} else if (returnPid == 0) {
 		//the child goes down this path
-		wait(NULL);
-		close(pipe1[1]); 
-		readPipe(pipe1[0]);
-
+    
+    //closing the not used ends of the pipes prematurely
+    close(pipe2[0]);
+    close(pipe1[1]);
+    
+    //communication between the processes
+    for (int i = 0; i < numberIterations; i++) {
+      read(pipe1[0], &byte, sizeof(int));
+      write(pipe2[1], &byte, sizeof(int));
+    }
+    
+    //get time at the end of execution
+    gettimeofday(&end, 0);
+     
+    //pass the end in to parent process for time calculation
+    write(timePipe[1], &end, sizeof(struct timeval));
+     
 	} else {
-//		//the parent goes down this path 
-		close(pipe1[0]);
-		writePipe(pipe1[1]);
-	//	return EXIT_SUCCESS;
-/*		double avgTime; 
-		gettimeofday(&start, 0); 	
-		//wait(NULL); 	
-		for (int j = 0; j < numberIterations; j++) { 
-		dup2(pipe2[1], STDOUT_FILENO); 
-		close(pipe2[1]);
-		close(pipe2[0]); 
-		dup2(pipe1[0], STDIN_FILENO); 
-		close(pipe1[1]);
-		close(pipe1[0]);
-		}
-		
-		wait(NULL);
-		long t1Nanosec, t2Nanosec; 
-		t1Nanosec = (start.tv_sec * 1000000 + start.tv_usec)*1000;
-		t2Nanosec = (end.tv_sec * 1000000 + end.tv_usec)*1000;
-
-		avgTime = (t2Nanosec - t1Nanosec) / (numberIterations * 1.0 * 2); 
-		printf("Averagetime spent in context switch in nanoseconds: %0.9f\n", avgTime);
-*/
+		  //the parent goes down this path 
+      double avgTime, t1Nanosec, t2Nanosec;
+     
+      //get the time in the beginning of the execution
+      gettimeofday(&start, NULL);
+      
+      //closing the not used ends of the pipes prematurely
+      close(pipe1[0]);
+      close(pipe2[1]);
+      
+     //we are using pipe1 to pass the int to the child, initiating context switch, and child execution and read, then upon child writing, we then read the int from pipe2.
+      for (int j = 0; j < numberIterations; j++) {
+        write(pipe1[1], &byte, sizeof(int));
+        read(pipe2[0], &byte, sizeof(int));
+     }
+     
+    //closing the process switch pipes
+    close(pipe1[0]);
+    close(pipe1[1]);
+    close(pipe2[0]);
+    close(pipe2[1]);
+    
+    //getting the end of time from the child process
+    read(timePipe[0],&end,sizeof(struct timeval));
+    
+    //closing down the timepipe
+    close(timePipe[0]);
+    close(timePipe[1]);
+    
+    //calculating average time for the the context switch and output 
+    avgTime = ((((end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec))/1000.0)/(numberIterations * 2.0));
+    printf("Average time for context switch in milliseconds over million iterations: %0.6lf ms\n",avgTime);
+    
 	}
-}
-	gettimeofday(&end, 0);
 
-	t1Nanosec = (start.tv_sec * 1000000 + start.tv_usec)*1000;
-	t2Nanosec = (end.tv_sec * 1000000 + start.tv_usec)*1000;
-
-	avgTime = (t2Nanosec - t1Nanosec)/(numberIterations * 1.0);
-	
-	printf("Average time for the context switch %0.9f\n", avgTime); 
-	
 return 0;
 }
 
-/*
-void readPipe(int file) {
-	FILE* stream;
-	int ch;
-	stream = fdopen(file, "r");
-	while ((ch = fgetc(stream)) != EOF)
-		putchar(ch);
-	fclose(stream); 
-}
 
-
-
-void writePipe(int file) {
-	FILE* stream; 
-	stream = fdopen(file, "w"); 
-	fprintf(stream, "hello\n");
-	fprintf(stream, "goodbye\n");
-	fclose(stream);
-}
-*/
-//		gettimeofday(&end, 0); 
-
-		
-	//	return EXIT_SUCCESS;
-/*		
-//		for (int i = 0; i < numberIterations; i++) {	
-		dup2(pipe1[1], STDOUT_FILENO);
-		close(pipe1[1]);
-		close(pipe1[0]);
-		dup2(pipe2[0], STDIN_FILENO); 
-		close(pipe2[1]); 
-		close(pipe2[0]);
-*/
-//		}
-//		gettimeofday(&end, 0); 
